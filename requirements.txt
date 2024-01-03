@@ -1,0 +1,12 @@
+boto3
+streamlit
+watchdog
+lancedb
+langchain
+unstructured[all-docs]
+black
+isort
+feedparser
+bs4
+transformers
+loguru
