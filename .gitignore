@@ -162,3 +162,5 @@ cython_debug/
 # Custom exclusions
 .DS_Store
 app/data/
+app/lancedb/
+app/config.json
