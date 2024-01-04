@@ -10,3 +10,6 @@ feedparser
 bs4
 transformers
 loguru
+spacy
+duckdb
+tqdm

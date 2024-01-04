@@ -1,25 +1,28 @@
-import json
+import sys
 import warnings
 from pathlib import Path
 
 import lancedb
 import streamlit as st
-from langchain.embeddings.huggingface import HuggingFaceEmbeddings
-from langchain.llms.ollama import Ollama
+from bedrock_utils import (
+    get_langchain_bedrock_embeddings,
+    get_langchain_bedrock_llm,
+)
 from langchain.prompts.prompt import PromptTemplate
 from langchain.schema import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.vectorstores.lancedb import LanceDB
 from loguru import logger
-from transformers import AutoModel, AutoTokenizer
+
+module_path = ".."
+sys.path.append(str(Path(module_path).absolute()))
 
 warnings.filterwarnings("ignore")
 
 logger.add(f"logs/{Path(__file__).stem}_" + "{time}.log", backtrace=True, diagnose=True)
 
-PROMPT_PREFIX = "[INST] "
-PROMPT_SUFFIX = " [/INST]"
-LLAMA2_PROMPT = """[INST] <<SYS>> {sys_prompt} <</SYS> {prompt} [/INST]"""
+HUMAN_PROMPT = "\n\nHuman:"
+AI_PROMPT = "\n\nAssistant:"
 
 
 # Function to get total number of records in table
@@ -27,42 +30,18 @@ def get_total_records(db_path, table_name):
     db = lancedb.connect(db_path)
     table = db.open_table(table_name)
     records = table.search().limit(10000).to_list()
+    logger.info(f"Total records in {table_name} = {len(records)}")
     return len(records)
 
 
-# Function to get embeddings function
-def get_embeddings_function(model_id):
-    # HF_MODEL_ID = "jinaai/jina-embeddings-v2-base-en"
-    _ = AutoTokenizer.from_pretrained(model_id)
-    _ = AutoModel.from_pretrained(model_id, trust_remote_code=True)
-
-    model_kwargs = {"device": "mps"}
-    encode_kwargs = {"normalize_embeddings": True}
-    jina_embeddings = HuggingFaceEmbeddings(
-        model_name=model_id, model_kwargs=model_kwargs, encode_kwargs=encode_kwargs
-    )
-    print("Inside get_embeddings_function")
-    return jina_embeddings
-
-
 # Function to get retriever connection to LanceDB vectorstore
-def get_retriever(db_path, table_name, embed_model_id, topk):
+def get_retriever(db_path, table_name, topk=3):
     print("Inside get_retriever")
     db = lancedb.connect(db_path)
     table = db.open_table(table_name)
-    # connect to vector store
-    _ = AutoTokenizer.from_pretrained(embed_model_id)
-    _ = AutoModel.from_pretrained(embed_model_id, trust_remote_code=True)
-
-    model_kwargs = {"device": "mps"}
-    encode_kwargs = {"normalize_embeddings": True}
-    jina_embeddings = HuggingFaceEmbeddings(
-        model_name=embed_model_id,
-        model_kwargs=model_kwargs,
-        encode_kwargs=encode_kwargs,
-    )
-
-    vectorstore = LanceDB(connection=table, embedding=jina_embeddings)
+    model_id = st.session_state.embedding_model_name
+    embeddings = get_langchain_bedrock_embeddings(model_id=model_id, region="us-west-2")
+    vectorstore = LanceDB(connection=table, embedding=embeddings)
     # set vectorstore as retriever
     retriever_kwargs = {
         "search_type": "similarity",
@@ -72,33 +51,35 @@ def get_retriever(db_path, table_name, embed_model_id, topk):
     return retriever
 
 
-# Function to return ollama llm
-def get_llm(model_name):
-    llm = Ollama(model=model_name)
-    return llm
+# function to format the retrieved docs into xml tags for claude
+def format_context_docs(docs):
+    context_string = ""
+    for idx, _d in enumerate(docs):
+        metadata = _d.metadata
+        otag = f"<document index={idx+1}>"
+        ctag = "</document>"
+        src_text = f"<source>{metadata['source']}</source>"
+        c_text = f"{otag}<document_content>{_d.page_content}</document_content>{src_text}{ctag}\n"
+        context_string += c_text
+    # print(context_string)
+    return context_string
 
 
 # Streamlit Chatbot app
 def app():
-    st.set_page_config(page_title="Private GPT Chatbot", page_icon="💬")
-    st.title("An Chatbot using Ollama")
-    st.caption("🚀 A private ollama chatbot")
-    # Read config file path from session state
-    config_path = Path(st.session_state.config_file_path)
-    print(config_path)
-    # config_path = Path("../config.json")
-    if config_path.exists():
-        with open("config.json", "r") as f:
-            config = json.load(f)
-        # Load the values from the config.json file and assign as session_state variable
-        st.session_state.embedding_model_name = config["embedding_model_name"]
-        st.session_state.llm_model_name = config["llm_model_name"]
-        st.session_state.vectorstore_name = config["vectorstore_name"]
-        st.session_state.vectorstore_path = config["vectorstore_path"]
-        st.session_state.dimensions = config["dimensions"]
-        st.session_state.ollama_models = config["ollama_models"]
-        st.session_state.lancedb_table_name = config["lancedb_table_name"]
-        st.session_state.embedding_max_length = config["embedding_max_length"]
+    # st.set_page_config(page_title="Private GPT Chatbot", page_icon="💬")
+    st.title("Chat with AWS Blog Posts")
+    st.caption("🚀 A private blog chatbot")
+
+    # write session state to config.json
+    for k, v in st.session_state.items():
+        if k == "llm_model_name":
+            print(f"k: {k}, v: {v}")
+            st.session_state.llm_model_name = v
+        if k == "embedding_model_name":
+            print(f"k: {k}, v: {v}")
+            st.session_state.embedding_model_name = v
+    # print(st.session_state.config)
 
     with st.sidebar:
         st.markdown(f"**Model:** {st.session_state.llm_model_name}")
@@ -112,10 +93,18 @@ def app():
     # Initialize Chat history
     if "messages" not in st.session_state:
         st.session_state["messages"] = []
+        st.chat_message("assistant").write("Hi, welcome to blog buddy")
 
     # Display chat messages from history on app rerun
     for message in st.session_state.messages:
         st.chat_message(message["role"]).write(message["content"])
+
+    db_path = st.session_state.vectorstore_path
+    model_name = st.session_state.llm_model_name
+    table_name = st.session_state.lancedb_table_name
+    print(db_path)
+    print(model_name)
+    print(table_name)
 
     # React to user input
     if prompt := st.chat_input():
@@ -124,52 +113,33 @@ def app():
         # Display user message in chat message container
         st.chat_message("user").write(prompt)
 
-        # Prepare the prompt and invoke the chain to get output from llm
-        db_path = st.session_state.vectorstore_path
-        model_name = st.session_state.llm_model_name
-        embed_model_id = st.session_state.embedding_model_name
-        table_name = st.session_state.lancedb_table_name
-        print(model_name)
-        print(embed_model_id)
-        print(table_name)
-        llm = get_llm(model_name)
-        # retriever = get_retriever(
-        #     db_path=db_path,
-        #     table_name=table_name,
-        #     embed_model_id=embed_model_id,
-        #     topk=3,
-        # )
-        # json_output prompt
-        # llama2_prompt = PromptTemplate.from_file(
-        #     template_file=Path(
-        #         f"./prompts/{model_name}/json_prompt_{model_name}.txt"
-        #     ).resolve(),
-        #     input_variables=["text"],
-        # )
-        # document summarizer prompt
-        llama2_prompt = PromptTemplate.from_file(
-            template_file=Path(
-                f"./prompts/{model_name}/doc_summarizer_{model_name}.txt"
-            ).resolve(),
-            input_variables=["document"],
+        llm = get_langchain_bedrock_llm(model_id=model_name, region="us-west-2")
+        retriever = get_retriever(
+            db_path=db_path,
+            table_name=table_name,
+            topk=3,
         )
-
         # RAG prompt
-        # llama2_prompt = PromptTemplate.from_file(
-        #     template_file=Path(
-        #         f"./prompts/{model_name}/rag_prompt_{model_name}.txt"
-        #     ).resolve(),
-        #     input_variables=["context", "question"],
-        # )
-        chain = (
-            {"document": RunnablePassthrough()}
-            | llama2_prompt
+        if "v2" in model_name:
+            print(model_name)
+        prompt_file = Path("prompts/rag_prompt_v2.txt").absolute()
+        print(prompt_file)
+        rag_prompt = PromptTemplate.from_file(
+            prompt_file, input_variables=["context", "question"]
+        )
+        rag_chain = (
+            {
+                "question": RunnablePassthrough(),
+                "context": retriever | format_context_docs,
+            }
+            | rag_prompt
             | llm
             | StrOutputParser()
         )
 
-        with st.spinner(f'Generating text {model_name} Please wait ...'):
-            output = chain.invoke(prompt)
+        with st.spinner(f"Generating using {model_name} ..."):
+            output = rag_chain.invoke(prompt)
+            logger.info(f"LLM Output: {output}")
 
         # Display assistant response in chat message container
         with st.chat_message("assistant"):

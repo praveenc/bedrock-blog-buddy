@@ -1,17 +1,18 @@
-import json
 import sys
 from pathlib import Path
 from typing import List
 
 import lancedb
 import streamlit as st
+from bedrock_utils import get_model_ids
+from blog_utils import BlogsDuckDB
 from lancedb.pydantic import LanceModel, Vector
 from loguru import logger
 from transformers import AutoTokenizer
-from utils import get_model_ids
 
 module_path = "."
 sys.path.append(str(Path(module_path).absolute()))
+
 logger.add(f"logs/{Path(__file__).stem}_" + "{time}.log", backtrace=True, diagnose=True)
 
 
@@ -20,8 +21,9 @@ def get_anthropic_llms(providers: List[str] = ["Anthropic"]):
     for provider in providers:
         model_ids = get_model_ids(provider=provider, output_modality="TEXT")
         models.extend(model_ids)
-    st.session_state.bedrock_llms = models
-    return models
+    filtered_models = [mdl for mdl in models if "k" not in mdl]
+    # st.session_state.bedrock_llms = models
+    return filtered_models
 
 
 def get_cohere_embedding_models(providers: List[str] = ["Cohere"]):
@@ -49,7 +51,7 @@ def check_vectorstore_path(vectorstore_path, dimensions, embed_model_id):
         vectorstore_path.mkdir(parents=True, exist_ok=True)
 
     if "vectorstore_path" not in st.session_state:
-        st.session_state.vectorstore_path = vectorstore_path
+        st.session_state.vectorstore_path = str(vectorstore_path)
 
     # Connect to LanceDB
     db = lancedb.connect(vectorstore_path)
@@ -71,9 +73,9 @@ def check_vectorstore_path(vectorstore_path, dimensions, embed_model_id):
 
         table = db.create_table(table_name, schema=MLBlogs.to_arrow_schema())
         st.write(f"Created Table: {table_name}")
-
-    table = db.open_table(table_name)
-    st.markdown(f"**Table:** `{table_name}` already exists in LanceDB.")
+    else:
+        st.markdown(f"**Table:** `{table_name}` already exists in LanceDB.")
+        table = db.open_table(table_name)
     st.session_state.lancedb_table_name = table_name
     st.markdown(f"**Table `{table_name}` Schema:**")
     st.code(table.schema)
@@ -81,28 +83,8 @@ def check_vectorstore_path(vectorstore_path, dimensions, embed_model_id):
 
 # Streamlit app for setting ChatApp configuration
 def app():
-    st.title("BlogBuddy Configuration ⚙️")
-    st.caption("To start, enter the configuration details below.")
-
-    # Check if config.json file exists, if it does, load the values from it
-    config_path = Path("config.json").absolute()
-    print(config_path)
-    if config_path.exists():
-        with open(config_path, "r") as f:
-            config = json.load(f)
-        # Load the values from the config.json file and assign as session_state variable
-        for k, v in config.items():
-            st.session_state[k] = v
-        # st.session_state.embedding_model_name = config["embedding_model_name"]
-        # st.session_state.llm_model_name = config["llm_model_name"]
-        # st.session_state.vectorstore_name = config["vectorstore_name"]
-        # st.session_state.vectorstore_path = config["vectorstore_path"]
-        # st.session_state.dimensions = config["dimensions"]
-        # st.session_state.bedrock_llms = config["bedrock_llms"]
-        # st.session_state.bedrock_embedding_models = config["bedrock_embedding_models"]
-        # st.session_state.embeddings_max_length = config["embeddings_max_length"]
-        # st.session_state.lancedb_table_name = config["lancedb_table_name"]
-        # st.session_state.config_file_path = config["config_file_path"]
+    st.title("👋 Welcome to BlogBuddy 🤖")
+    st.caption("To start, Select a LLM and an Embedding Model and click `Save`.")
 
     # Configuration options for setting the embedding model
     st.subheader("Embedding Model")
@@ -119,37 +101,28 @@ def app():
 
     # Configuration options for selecting LLM to be used for chat application
     st.subheader("LLM")
-    # Dropdown for selecting list of ollama models installed
+
     model_names = get_anthropic_llms()
     llm_model_name = st.selectbox(
         "Select Text generation model",
         options=model_names,
         key="llm_model_name",
-        help="Select text generationmodel to be used for chat application.",
+        placeholder="Select a text generation model.",
+        help="Select text generation model to be used for chat application.",
+        # on_change=store_model_name,
     )
     st.markdown("---")
 
-    # Configuration options for selecting a local vectorstore
-    st.subheader("VectorDB config")
-    # This section has 2 columns, one for the vectorstore name and one for the vectorstore path
-    col1, col2 = st.columns(2)
-    # First column, A dropdown with a single default value set to "LanceDB"
-    vectorstore_name = col1.selectbox(
-        "VectorDB Name", options=["LanceDB"], key="vectorstore_name"
-    )
-    # Second column, A text input field for the vectorstore path
-    vectorstore_path = col2.text_input(
-        "Vectorstore Path",
-        key="vectorstore_path",
-        help="Path to the vectorstore",
-    )
-    st.markdown("---")
+    vectorstore_path = Path("./lancedb").absolute()
+    duckdb_path = Path("./duckdb").absolute()
+    duckdb_path.mkdir(exist_ok=True, parents=True)
 
     # Save button to store all the selected values to a file named config.json
     if st.button("Save"):
+        # logger.info(st.session_state)
         # download embedding model if doesn't exist
         dimensions = get_embedding_dimensions(embedding_model_name)
-
+        logger.info(f"Dimensions: {dimensions}")
         # check if vectorstore_path exists, if not, create it
         vectorstore_path = Path(vectorstore_path).absolute()
 
@@ -159,6 +132,13 @@ def app():
             st.session_state.embedding_model_name,
         )
 
+        # create Duckdb table if not exist
+        logger.info(f"Creating DuckDB table: {duckdb_path}")
+        duckdb_path = duckdb_path.joinpath("blogposts.db")
+        _ = BlogsDuckDB(str(duckdb_path))
+        if "duckdb_path" not in st.session_state:
+            st.session_state.duckdb_path = str(duckdb_path)
+
         # save the values to a file named config.json
         # print(vectorstore_path)
         if "embeddings_max_length" not in st.session_state:
@@ -167,22 +147,26 @@ def app():
             )
             st.session_state.embeddings_max_length = tokenizer.model_max_length
 
-        config = {
-            "embedding_model_name": embedding_model_name,
-            "embeddings_max_length": st.session_state.embeddings_max_length,
-            "llm_model_name": llm_model_name,
-            "vectorstore_name": vectorstore_name,
-            "vectorstore_path": str(vectorstore_path),
-            "dimensions": dimensions,
-            "lancedb_table_name": st.session_state.lancedb_table_name,
-            "bedrock_llms": model_names,
-            "bedrock_embedding_models": embed_model_names,
-            "config_file_path": str(config_path),
-        }
-        print(config)
-        with open(config_path, "w") as f:
-            json.dump(config, f)
-        st.success(f"Configuration saved to {str(config_path)} successfully!")
+        if "llm_model_name" not in st.session_state:
+            st.session_state.llm_model_name = llm_model_name
+
+        logger.info(st.session_state)
+        # config = {
+        #     "embedding_model_name": embedding_model_name,
+        #     "embeddings_max_length": st.session_state.embeddings_max_length,
+        #     "llm_model_name": llm_model_name,
+        #     "vectorstore_path": str(vectorstore_path),
+        #     "duckdb_path": str(duckdb_path),
+        #     "dimensions": dimensions,
+        #     "lancedb_table_name": st.session_state.lancedb_table_name,
+        #     "bedrock_llms": model_names,
+        #     "bedrock_embedding_models": embed_model_names,
+        #     # "config_file_path": str(config_path),
+        # }
+        # print(config)
+        # with open(config_path, "w") as f:
+        #     json.dump(config, f)
+        # st.success(f"Configuration saved to {str(config_path)} successfully!")
 
 
 if __name__ == "__main__":

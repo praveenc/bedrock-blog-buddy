@@ -1,7 +1,38 @@
 import boto3
+from langchain.embeddings.bedrock import BedrockEmbeddings
+from langchain.llms.bedrock import Bedrock
 
 
-def get_model_ids(provider, output_modality):
+def get_langchain_bedrock_llm(
+    model_id: str = "anthropic.claude-v2:1", region: str = "us-west-2"
+):
+    bedrock_client = boto3.client("bedrock-runtime", region_name=region)
+    model_kwargs = get_inference_parameters("anthropic")
+
+    llm = Bedrock(
+        client=bedrock_client,
+        model_kwargs=model_kwargs,
+        model_id=model_id,
+        region_name=region,
+    )
+    return llm
+
+
+def get_langchain_bedrock_embeddings(
+    model_id: str = "cohere.embed-english-v3", region: str = "us-west-2"
+):
+    bedrock_client = boto3.client("bedrock-runtime", region_name=region)
+    embeddings = BedrockEmbeddings(
+        client=bedrock_client, model_id=model_id, region_name=region
+    )
+    return embeddings
+
+
+def get_model_ids(
+    provider: str = "Anthropic",
+    output_modality: str = "TEXT",
+    region: str = "us-west-2",
+):
     """
     Fetch model IDs from AWS Bedrock for specified provider and output modality.
 
@@ -12,8 +43,8 @@ def get_model_ids(provider, output_modality):
     Returns:
     list: A list of model IDs that match the criteria.
     """
-    b_client = boto3.client("bedrock", region_name="us-west-2")
-    models = b_client.list_foundation_models()["modelSummaries"]
+    bedrock_client = boto3.client("bedrock", region_name=region)
+    models = bedrock_client.list_foundation_models()["modelSummaries"]
     model_ids = [
         model["modelId"]
         for model in models
