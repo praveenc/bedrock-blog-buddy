@@ -89,7 +89,7 @@ def app():
         "bigdata": "https://aws.amazon.com/blogs/big-data/feed/",
         "containers": "https://aws.amazon.com/blogs/containers/feed/",
         "serverless": "https://aws.amazon.com/blogs/compute/tag/serverless/feed/",
-        "operations": "https://aws.amazon.com/blogs/mt/",
+        "operations": "https://aws.amazon.com/blogs/mt/feed/",
         "opensource": "https://aws.amazon.com/blogs/opensource/feed/",
     }
 
