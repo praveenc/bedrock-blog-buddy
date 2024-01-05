@@ -26,6 +26,12 @@ cd app
 streamlit run BlogBuddy.py
 ```
 
+Once the app is launched, select `Embedding Model`, `Text Generation Model (llm)` and `AWS Region` and click save.
+
+Navigate to `Refresh Data` page and click on `Refresh Feed`, this seeds your local DB.
+
+You can now click on `Chat` to start your session.
+
 ## VectorDB and Storage
 
 We use [LanceDB](https://lancedb.com/) as our vector store. Vectors and metadata are stored locally.
@@ -41,3 +47,4 @@ Blog posts are indexed from the below AWS RSS feeds.
 - [AWS Analytics/Big-Data blogs](https://aws.amazon.com/blogs/big-data/feed/)
 - [AWS Containers blogs](https://aws.amazon.com/blogs/containers/feed/)
 - [AWS Serverless blogs](https://aws.amazon.com/blogs/compute/tag/serverless/feed/)
+- [AWS CloudOperations and Migrations blogs](https://aws.amazon.com/blogs/mt/)
