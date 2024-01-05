@@ -87,12 +87,19 @@ class BlogsDuckDB:
         return pd.DataFrame()
 
     def get_latest_posts(self, category, days=20) -> pd.DataFrame:
-        SQL = f"""SELECT blog_category, blogpost_url, blog_summary, published_date FROM blogposts
+        SQL = f"""SELECT blogpost_url, published_date FROM blogposts
         WHERE blog_category = '{category}'
         AND published_date > CURRENT_TIMESTAMP - INTERVAL '{days} days'"""
-        result = self.conn.execute(SQL)
-        if result is not None:
-            return result.fetchdf()
+        result = self.conn.execute(SQL).fetchdf()
+        if len(result.values) >= 1:
+            return result.to_dict(orient="records")
+        return pd.DataFrame()
+
+    def get_post_summary(self, post_url) -> pd.DataFrame:
+        SQL = f"SELECT blog_summary FROM blogposts WHERE blogpost_url = '{post_url}'"
+        result = self.conn.execute(SQL).fetchdf()
+        if len(result.values) >= 1:
+            return result.to_dict(orient="records")
         return pd.DataFrame()
 
     def delete_all_records(self):
