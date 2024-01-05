@@ -1,3 +1,4 @@
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -21,11 +22,18 @@ logger.add(f"logs/{Path(__file__).stem}_" + "{time}.log", backtrace=True, diagno
 
 
 class BlogsDuckDB:
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-        self.conn = duckdb.connect(self.db_path)
+    def __init__(self, db_dir: Path):
+        self.db_dir = db_dir
+        self.db_name = "blogposts"
         self.table_name = "blogposts"
-        _ = self.create_blogposts_table()
+        if not db_dir.exists():
+            db_dir.mkdir(exist_ok=True, parents=True)
+        self.db_path = db_dir.joinpath(self.db_name)
+        self.conn = duckdb.connect(str(self.db_path))
+        self.create_blogposts_table()
+
+    def get_table_name(self):
+        return self.table_name
 
     def get_connection(self):
         return self.conn
@@ -34,10 +42,17 @@ class BlogsDuckDB:
         return self.conn.close()
 
     def create_blogposts_table(self):
-        self.conn.sql("CREATE SEQUENCE IF NOT EXISTS blogid_seq START 1;")
-        return self.conn.sql(
-            f"CREATE TABLE IF NOT EXISTS {self.table_name}(id INTEGER PRIMARY KEY DEFAULT NEXTVAL('blogid_seq'), blog_domain VARCHAR, blogpost_url VARCHAR, date_published TIMESTAMP)"
-        )
+        self.conn.execute("CREATE SEQUENCE IF NOT EXISTS blogid_seq START 1;")
+        SQL = f"""CREATE TABLE IF NOT EXISTS
+        {self.table_name}(
+            id INTEGER PRIMARY KEY DEFAULT NEXTVAL('blogid_seq'),
+            blog_domain VARCHAR,
+            blog_category VARCHAR,
+            blogpost_url VARCHAR,
+            blog_summary VARCHAR,
+            published_date TIMESTAMP
+        )"""
+        return self.conn.execute(SQL)
 
     def show_tables(self):
         tables_df = self.conn.execute("SHOW ALL TABLES;").fetchdf()
@@ -69,6 +84,15 @@ class BlogsDuckDB:
             return result.fetch_df()
         return pd.DataFrame()
 
+    def get_latest_posts(self, category, days=20) -> pd.DataFrame:
+        SQL = f"""SELECT blog_category, blogpost_url, blog_summary, published_date FROM blogposts
+        WHERE blog_category = '{category}'
+        AND published_date > CURRENT_TIMESTAMP - INTERVAL '{days} days'"""
+        result = self.conn.execute(SQL)
+        if result is not None:
+            return result.fetchdf()
+        return pd.DataFrame()
+
     def delete_all_records(self):
         results = self.conn.sql(f"DELETE FROM {self.table_name}")
         return results
@@ -89,20 +113,22 @@ class ScrapeAWSBlogs:
     def __init__(
         self,
         feed_url: str,
-        duck_db_path: str,
+        blog_category: str,
+        duckdb_dir: Path = Path("duckdb"),
         target_dir: Path = Path("./data"),
-        table_name: str = "blogposts",
     ) -> None:
         self.rss_feed_url = feed_url
-        if Path(duck_db_path).exists():
-            self.duckdb_conn = BlogsDuckDB(str(duck_db_path)).get_connection()
+        if duckdb_dir.exists():
+            duckdb = BlogsDuckDB(duckdb_dir)
+            self.duckdb_conn = duckdb.get_connection()
+            self.table_name = duckdb.get_table_name()
         else:
-            logger.error(f"DuckDB database not found at {duck_db_path}")
+            logger.error(f"DuckDB database not found at {duckdb_dir}")
             raise FileNotFoundError
             sys.exit(-1)
-        self.table_name = table_name
+
         self.target_dir = target_dir
-        self.target_dir.mkdir(exist_ok=True, parents=True)
+        self.blog_category = blog_category
         self.is_download = True
         nlp = English()
         nlp.add_pipe("sentencizer")
@@ -123,25 +149,51 @@ class ScrapeAWSBlogs:
     def get_html_text(self, url: str) -> str:
         """
         Function to download html page to disk and return the html content.
+        extracts Blog post conclusion and removes text about authors.
         If the page is already downloaded then skips scraping again.
+        Returns html_content and post summary if available
         """
+
+        def clean_and_extract_summary(content):
+            soup = BeautifulSoup(content, "html.parser")
+            conclusion = soup.find("h2", text="Conclusion")
+            conclusion_paragraphs = []
+            if conclusion:
+                for sibling in conclusion.find_next_siblings():
+                    if sibling.name == "p":
+                        conclusion_paragraphs.append(sibling.text)
+                    if sibling.name == "h2" or sibling.name == "h3":
+                        break
+
+            # Find the tag and remove all subsequent siblings
+            about_authors = soup.find("h3", text="About the Authors")
+            if about_authors:
+                for sibling in about_authors.find_next_siblings():
+                    sibling.decompose()
+                about_authors.decompose()
+            cleaned_content = str(soup)
+            conclusion_text = " ".join(conclusion_paragraphs)
+            return cleaned_content, conclusion_text
+
         parsed_url = urlparse(url)
         folder_name = parsed_url.netloc.replace(".", "_")
         DATADIR = self.target_dir.joinpath(folder_name)
+        DATADIR.mkdir(exist_ok=True, parents=True)
         file_name = parsed_url.path.rstrip("/").split("/")[-1]
         if DATADIR.joinpath(file_name).exists():
-            # logger.info(f"Reading {file_name} from disk")
             with open(DATADIR.joinpath(file_name), "r") as f:
-                return f.read()
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-        except RequestException as e:
-            logger.error(f"Error during requests to {url} : {e}")
-            return None
-        html_content = BeautifulSoup(response.content, "html.parser")
-        DATADIR.joinpath(file_name).write_text(str(html_content), encoding="utf-8")
-        return str(html_content)
+                file_content = f.read()
+                html_content, conclusion = clean_and_extract_summary(file_content)
+        else:
+            try:
+                response = requests.get(url)
+                response.raise_for_status()
+                html_content, conclusion = clean_and_extract_summary(response.content)
+                DATADIR.joinpath(file_name).write_text(html_content, encoding="utf-8")
+            except RequestException as e:
+                logger.error(f"Error during requests to {url} : {e}")
+                return "None", "None"
+        return html_content, conclusion
 
     def scrape_rss_feed(self):
         links = []
@@ -155,29 +207,22 @@ class ScrapeAWSBlogs:
         ):
             metadata = dict()
             link = entry.link
-            html_content = self.get_html_text(link)
+            if self.is_url_in_db(link):
+                # logger.info(f"Already processed, skipping {link}")
+                continue
+            html_content, summary = self.get_html_text(link)
             metadata["published"] = entry.published
             metadata["title"] = entry.title
             metadata["source"] = link
+            metadata["summary"] = summary
             # check if entry has key names authors, summary. Add keys to metadata accordingly.
-            authors = entry.authors if "authors" in entry else []
-            if authors:
-                authors = [a["name"] for a in authors]  # expand author dictionaries
-                metadata["authors"] = authors
-            summary_text = entry.summary if "summary" in entry else ""
-            if len(summary_text) > 0:
-                # Summaries have tags in em sometimes. Clean em before adding.
-                metadata["summary"] = "".join(
-                    [el.text for el in partition_html(text=summary_text)]
-                )
+            authors = [a["name"] for a in entry.authors] if "authors" in entry else []
+            metadata["authors"] = authors
             html_doc = Document(page_content=html_content, metadata=metadata)
             links.append(link)
             metadatas.append(metadata)
             html_docs.append(html_doc)
-            if not self.is_url_in_db(link):
-                self.log_scrape_details(link, str(entry.published))
-            # else:
-            #     logger.info(f"Skipping DB entry: {link}")
+            self.log_scrape_details(link, str(entry.published), summary)
         return links, metadatas, html_docs
 
     def get_processed_docs(self) -> List[Document]:
@@ -234,11 +279,10 @@ class ScrapeAWSBlogs:
         chunks.append(current_chunk)  # Add the last chunk
         return chunks
 
-    def log_scrape_details(self, link: str, date_published: str):
+    def log_scrape_details(self, link: str, date_published: str, summary: str):
         blog_domain = urlparse(link).netloc
-        blogpost_url = link
         datetime_obj = datetime.strptime(date_published, "%a, %d %b %Y %H:%M:%S %z")
         final_dt = datetime.strftime(datetime_obj, "%Y-%m-%d %H:%M:%S")
-        SQL = f"INSERT OR IGNORE INTO {self.table_name} VALUES (nextval('blogid_seq'),'{blog_domain}', '{blogpost_url}', '{final_dt}')"
+        SQL = f"""INSERT OR IGNORE INTO {self.table_name} VALUES (nextval('blogid_seq'), '{blog_domain}', '{self.blog_category}', '{link}', '{summary}', '{final_dt}')"""
         result_df = self.duckdb_conn.execute(SQL).fetchdf()
         return result_df

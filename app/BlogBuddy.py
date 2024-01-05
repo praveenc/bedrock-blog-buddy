@@ -113,6 +113,14 @@ def app():
     )
     st.markdown("---")
 
+    st.subheader("AWS region")
+    aws_region = st.selectbox(
+        "Select AWS region",
+        options=["us-east-1", "us-west-2"],
+        key="aws_region",
+        help="Select AWS region to be used for chat application.",
+    )
+
     vectorstore_path = Path("./lancedb").absolute()
     duckdb_path = Path("./duckdb").absolute()
     duckdb_path.mkdir(exist_ok=True, parents=True)
@@ -121,8 +129,8 @@ def app():
     if st.button("Save"):
         # logger.info(st.session_state)
         # download embedding model if doesn't exist
-        dimensions = get_embedding_dimensions(embedding_model_name)
-        logger.info(f"Dimensions: {dimensions}")
+        _ = get_embedding_dimensions(embedding_model_name)
+        # logger.info(f"Dimensions: {dimensions}")
         # check if vectorstore_path exists, if not, create it
         vectorstore_path = Path(vectorstore_path).absolute()
 
@@ -134,8 +142,7 @@ def app():
 
         # create Duckdb table if not exist
         logger.info(f"Creating DuckDB table: {duckdb_path}")
-        duckdb_path = duckdb_path.joinpath("blogposts.db")
-        _ = BlogsDuckDB(str(duckdb_path))
+        _ = BlogsDuckDB(duckdb_path)
         if "duckdb_path" not in st.session_state:
             st.session_state.duckdb_path = str(duckdb_path)
 
@@ -150,23 +157,16 @@ def app():
         if "llm_model_name" not in st.session_state:
             st.session_state.llm_model_name = llm_model_name
 
+        if "aws_region" not in st.session_state:
+            st.session_state.aws_region = aws_region
+
         logger.info(st.session_state)
-        # config = {
-        #     "embedding_model_name": embedding_model_name,
-        #     "embeddings_max_length": st.session_state.embeddings_max_length,
-        #     "llm_model_name": llm_model_name,
-        #     "vectorstore_path": str(vectorstore_path),
-        #     "duckdb_path": str(duckdb_path),
-        #     "dimensions": dimensions,
-        #     "lancedb_table_name": st.session_state.lancedb_table_name,
-        #     "bedrock_llms": model_names,
-        #     "bedrock_embedding_models": embed_model_names,
-        #     # "config_file_path": str(config_path),
-        # }
-        # print(config)
-        # with open(config_path, "w") as f:
-        #     json.dump(config, f)
-        # st.success(f"Configuration saved to {str(config_path)} successfully!")
+
+        with st.sidebar:
+            st.subheader("**Configuration**")
+            st.markdown(f"**Embedding Model:**`{embedding_model_name}`")
+            st.markdown(f"**LLM:** `{llm_model_name}`")
+            st.markdown(f"**AWS region:** `{aws_region}`")
 
 
 if __name__ == "__main__":

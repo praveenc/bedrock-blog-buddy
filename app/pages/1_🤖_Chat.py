@@ -26,11 +26,11 @@ AI_PROMPT = "\n\nAssistant:"
 
 
 # Function to get total number of records in table
-def get_total_records(db_path, table_name):
+def get_lancedb_records(db_path, table_name):
     db = lancedb.connect(db_path)
     table = db.open_table(table_name)
     records = table.search().limit(10000).to_list()
-    logger.info(f"Total records in {table_name} = {len(records)}")
+    # logger.info(f"Total records in {table_name} = {len(records)}")
     return len(records)
 
 
@@ -69,26 +69,30 @@ def format_context_docs(docs):
 def app():
     # st.set_page_config(page_title="Private GPT Chatbot", page_icon="💬")
     st.title("Chat with AWS Blog Posts")
-    st.caption("🚀 A private blog chatbot")
+    st.caption("🚀 Chat with top 20 blog posts from AWS Blogs RSS feeds.")
 
-    # write session state to config.json
+    # add custom session_state items
     for k, v in st.session_state.items():
         if k == "llm_model_name":
-            print(f"k: {k}, v: {v}")
             st.session_state.llm_model_name = v
         if k == "embedding_model_name":
-            print(f"k: {k}, v: {v}")
             st.session_state.embedding_model_name = v
-    # print(st.session_state.config)
+        if k == "aws_region":
+            st.session_state.aws_region = v
+
+    total_records = get_lancedb_records(
+        db_path=st.session_state.vectorstore_path,
+        table_name=st.session_state.lancedb_table_name,
+    )
 
     with st.sidebar:
-        st.markdown(f"**Model:** {st.session_state.llm_model_name}")
-        db_path = st.session_state.vectorstore_path
-        table_name = st.session_state.lancedb_table_name
-        st.markdown(f"**Table:** {table_name}")
-        total_records = get_total_records(db_path, table_name)
-        st.markdown(f"**Total Records:** _{total_records}_")
+        st.subheader("**Configuration**")
+        st.markdown(f"**Embedding Model:**`{st.session_state.embedding_model_name}`")
+        st.markdown(f"**LLM:** `{st.session_state.llm_model_name}`")
+        st.markdown(f"**AWS region:** `{st.session_state.aws_region}`")
         st.markdown("---")
+        st.subheader("**Records in DB**")
+        st.markdown(f"**{total_records}**")
 
     # Initialize Chat history
     if "messages" not in st.session_state:
@@ -102,9 +106,6 @@ def app():
     db_path = st.session_state.vectorstore_path
     model_name = st.session_state.llm_model_name
     table_name = st.session_state.lancedb_table_name
-    print(db_path)
-    print(model_name)
-    print(table_name)
 
     # React to user input
     if prompt := st.chat_input():
