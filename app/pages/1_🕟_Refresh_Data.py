@@ -12,7 +12,9 @@ from loguru import logger
 module_path = ".."
 sys.path.append(str(Path(module_path).absolute()))
 
-logger.add(f"logs/{Path(__file__).stem}_" + "{time}.log", backtrace=True, diagnose=True)
+logger.add(
+    f"logs/{Path(__file__).stem}.log", rotation="1 week", backtrace=True, diagnose=True
+)
 
 
 # Function to get total number of records in table
@@ -27,7 +29,9 @@ def get_total_records():
 
 # Function to chunk, encode and add documents to LanceDB
 def add_documents_to_lancedb(doc_chunks, model_id):
-    embeddings = get_langchain_bedrock_embeddings(model_id=model_id, region=st.session_state.aws_region)
+    embeddings = get_langchain_bedrock_embeddings(
+        model_id=model_id, region=st.session_state.aws_region
+    )
     lancedb_uri = st.session_state.vectorstore_path
     db = lancedb.connect(lancedb_uri)
     table_name = st.session_state.lancedb_table_name
@@ -124,7 +128,7 @@ def app():
         if docs_to_add >= 1:
             added_records = add_documents_to_lancedb(
                 doc_chunks=all_extracted_docs,
-                model_id=st.session_state.embedding_model_name
+                model_id=st.session_state.embedding_model_name,
             )
             total_records = get_total_records()
             total_records_placeholder.subheader(total_records)
@@ -132,6 +136,7 @@ def app():
             st.success(f"{added_records} records added to LanceDB successfully.")
         else:
             st.info("All RSS feeds are up to date! ✅")
+
 
 if __name__ == "__main__":
     app()

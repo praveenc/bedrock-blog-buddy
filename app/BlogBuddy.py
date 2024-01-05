@@ -13,7 +13,7 @@ from transformers import AutoTokenizer
 module_path = "."
 sys.path.append(str(Path(module_path).absolute()))
 
-logger.add(f"logs/{Path(__file__).stem}_" + "{time}.log", backtrace=True, diagnose=True)
+logger.add(f"logs/{Path(__file__).stem}.log", rotation="1 week", backtrace=True, diagnose=True)
 
 
 def get_anthropic_llms(providers: List[str] = ["Anthropic"]):

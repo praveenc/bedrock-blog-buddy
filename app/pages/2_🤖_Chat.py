@@ -19,7 +19,9 @@ sys.path.append(str(Path(module_path).absolute()))
 
 warnings.filterwarnings("ignore")
 
-logger.add(f"logs/{Path(__file__).stem}_" + "{time}.log", backtrace=True, diagnose=True)
+logger.add(
+    f"logs/{Path(__file__).stem}.log", rotation="1 week", backtrace=True, diagnose=True
+)
 
 HUMAN_PROMPT = "\n\nHuman:"
 AI_PROMPT = "\n\nAssistant:"

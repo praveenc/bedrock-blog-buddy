@@ -18,7 +18,9 @@ from transformers import AutoTokenizer
 from unstructured.cleaners.core import clean_non_ascii_chars, clean_postfix
 from unstructured.partition.html import partition_html
 
-logger.add(f"logs/{Path(__file__).stem}_" + "{time}.log", backtrace=True, diagnose=True)
+logger.add(
+    f"logs/{Path(__file__).stem}.log", rotation="1 week", backtrace=True, diagnose=True
+)
 
 
 class BlogsDuckDB:
