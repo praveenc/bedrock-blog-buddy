@@ -47,4 +47,4 @@ Blog posts are indexed from the below AWS RSS feeds.
 - [AWS Analytics/Big-Data blogs](https://aws.amazon.com/blogs/big-data/feed/)
 - [AWS Containers blogs](https://aws.amazon.com/blogs/containers/feed/)
 - [AWS Serverless blogs](https://aws.amazon.com/blogs/compute/tag/serverless/feed/)
-- [AWS CloudOperations and Migrations blogs](https://aws.amazon.com/blogs/mt/)
+- [AWS CloudOperations and Migrations blogs](https://aws.amazon.com/blogs/mt/feed/)
