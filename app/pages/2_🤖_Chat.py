@@ -122,10 +122,11 @@ def app():
             table_name=table_name,
             topk=3,
         )
-        # RAG prompt
-        if "v2" in model_name:
-            print(model_name)
-        prompt_file = Path("prompts/rag_prompt_v2.txt").absolute()
+        if model_name.split("-")[-1] == "v2:1":
+            prompt_file = Path("prompts/rag_prompt_v2_1.txt").absolute()
+        else:
+            prompt_file = Path("prompts/rag_prompt_v2.txt").absolute()
+
         print(prompt_file)
         rag_prompt = PromptTemplate.from_file(
             prompt_file, input_variables=["context", "question"]
@@ -142,7 +143,8 @@ def app():
 
         with st.spinner(f"Generating using {model_name} ..."):
             output = rag_chain.invoke(prompt)
-            logger.info(f"LLM Output: {output}")
+            output = output.replace("</answer>", "")
+            # logger.info(f"LLM Output: {output}")
 
         # Display assistant response in chat message container
         with st.chat_message("assistant"):

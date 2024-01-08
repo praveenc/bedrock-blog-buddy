@@ -46,7 +46,7 @@ def add_documents_to_lancedb(doc_chunks, model_id):
         text_key="text",
     )
 
-    with st.spinner(f"Adding {num_records} to table: {table_name}, please wait ..."):
+    with st.spinner(f"Adding {num_records} records to table: {table_name}, please wait ..."):
         _ = vectorstore.from_documents(
             documents=doc_chunks, embedding=embeddings, connection=table
         )
@@ -87,6 +87,7 @@ def app():
         "machinelearning": "https://aws.amazon.com/blogs/machine-learning/feed/",
         "security": "https://aws.amazon.com/blogs/security/feed/",
         "bigdata": "https://aws.amazon.com/blogs/big-data/feed/",
+        "databases": "https://aws.amazon.com/blogs/database/feed/",
         "containers": "https://aws.amazon.com/blogs/containers/feed/",
         "serverless": "https://aws.amazon.com/blogs/compute/tag/serverless/feed/",
         "operations": "https://aws.amazon.com/blogs/mt/feed/",

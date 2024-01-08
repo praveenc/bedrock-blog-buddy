@@ -1,6 +1,4 @@
-
-
-Human: I'm going to give you 3 documents in <docs></docs> XML tags. Then I'm going to ask you a question about it. Here are the documents for you to reference for your task:
+I'm going to give you 3 documents in <docs></docs> XML tags. Then I'm going to ask you a question about it. Here are the documents for you to reference for your task:
 
 <docs>
 {context}
@@ -13,6 +11,6 @@ Most importantly, always quote the <source> that helped you answer the question 
 
 Think step-by-step.
 
-Question : {question}
+Human: Question : {question}
 
 Assistant:<answer>
