@@ -1,3 +1,4 @@
+anthropic_bedrock
 boto3
 streamlit
 watchdog
