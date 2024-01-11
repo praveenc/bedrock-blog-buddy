@@ -9,6 +9,7 @@ from blog_utils import BlogsDuckDB
 from lancedb.pydantic import LanceModel, Vector
 from loguru import logger
 from transformers import AutoTokenizer
+import botocore
 
 module_path = "."
 sys.path.append(str(Path(module_path).absolute()))
@@ -86,10 +87,17 @@ def app():
     st.title("👋 Welcome to BlogBuddy 🤖")
     st.caption("To start, Select a LLM and an Embedding Model and click `Save`.")
 
+    try:
+        # Input field for the embedding model name from Bedrock
+        embed_model_names = get_cohere_embedding_models()
+    except botocore.exceptions.NoCredentialsError as error:
+        st.error("Looks like you're not AWS authenticated. Please re-authenticate and launch this app.")
+        st.code("cd app/ && streamlit run BlogBuddy.py")
+        st.stop()
+
     # Configuration options for setting the embedding model
     st.subheader("Embedding Model")
-    # Input field for the embedding model name from Bedrock
-    embed_model_names = get_cohere_embedding_models()
+
     embedding_model_name = st.selectbox(
         "Select embedding model",
         options=embed_model_names,
